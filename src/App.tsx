@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Messenger, SignIn } from './components'
 import { MessagingConnector } from './connector';
+import { useToaster } from './components/toaster/Toaster';
+import { ConnectionCallback } from './connector/types';
 
 const connector = new MessagingConnector({
   hostname: 'https://localhost:7101'
@@ -13,6 +15,7 @@ type AppState = {
 }
 
 function App() {
+  const { enqueueSnackbar } = useToaster()
   const [state, setState] = useState<AppState>({
     userName: '',
     selectedUserToMessage: '',
@@ -29,11 +32,19 @@ function App() {
           messages: [...oldState.messages, { fromUser, message }]
         }
       })
+      enqueueSnackbar(`From: ${fromUser} | ${message}`, { variant: 'default' })
+    }
+    const connectorToast: ConnectionCallback = ({ message, type }) => {
+      enqueueSnackbar(message, { variant: type })
     }
 
+    connector.subscribeToConnection(connectorToast)
     connector.subscribeToReceivedMessages(callback)
 
-    return () => connector.unsubscribeToReceivedMessages(callback)
+    return () => {
+      connector.unsubscribeToConnection(connectorToast)
+      connector.unsubscribeToReceivedMessages(callback)
+    }
   }, [])
 
   return (

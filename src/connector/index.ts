@@ -2,7 +2,8 @@ import * as signalR from "@microsoft/signalr";
 import {
     IMessagingConnector,
     ReceivedMessageCallback,
-    MessagingConnectorArgs
+    MessagingConnectorArgs,
+    ConnectionCallback
 } from "./types";
 import {
     MESSAGE_RECEIVED,
@@ -13,6 +14,7 @@ export class MessagingConnector implements IMessagingConnector {
     private _hostname: string = ''
     private _connection: signalR.HubConnection
     private _subscribedToMessageReceived: ReceivedMessageCallback[] = []
+    private _subscribedToConnection: ConnectionCallback[] = []
 
     constructor(args: MessagingConnectorArgs) {
         this._hostname = args.hostname
@@ -21,15 +23,35 @@ export class MessagingConnector implements IMessagingConnector {
             .withUrl(`${this._hostname}/hub`)
             .build();
 
-        this._connection.on(MESSAGE_RECEIVED, this.ooReceivedMessages)
-        this._connection.start().catch((err) => document.write(err))
+        this._connection.on(MESSAGE_RECEIVED, this.onReceivedMessages)
+        this._connection.start()
+            .then(() => this.onConnectionSucceed(`Connection established to '${args.hostname}'...`))
+            .catch(this.onConnectionFailed)
     }
 
     sendMessage = ({ message, toUser }: { toUser: string, message: string }) => {
         this._connection.send(SEND_MESSAGE_TO_ALL, toUser, message)
     }
 
-    ooReceivedMessages = (username: string, message: string) => {
+    subscribeToReceivedMessages = (callback: ReceivedMessageCallback) => {
+        this._subscribedToMessageReceived.push(callback)
+    }
+    unsubscribeToReceivedMessages = (callback: ReceivedMessageCallback) => {
+        this._subscribedToMessageReceived = this._subscribedToMessageReceived.filter((existingCallback) => {
+            return existingCallback !== callback
+        })
+    }
+
+    subscribeToConnection = (callback: ConnectionCallback) => {
+        this._subscribedToConnection.push(callback)
+    }
+    unsubscribeToConnection = (callback: ConnectionCallback) => {
+        this._subscribedToConnection = this._subscribedToConnection.filter((existingCallback) => {
+            return existingCallback !== callback
+        })
+    }
+
+    private onReceivedMessages = (username: string, message: string) => {
         this._subscribedToMessageReceived.forEach((callback) => {
             callback({
                 fromUser: username,
@@ -38,13 +60,15 @@ export class MessagingConnector implements IMessagingConnector {
         })
     }
 
-    subscribeToReceivedMessages = (callback: ReceivedMessageCallback) => {
-        this._subscribedToMessageReceived.push(callback)
+    private onConnectionSucceed = (message: string) => {
+        this._subscribedToConnection.forEach((callback) => {
+            callback({ message, type: 'success' })
+        })
     }
 
-    unsubscribeToReceivedMessages = (callback: ReceivedMessageCallback) => {
-        this._subscribedToMessageReceived = this._subscribedToMessageReceived.filter((existingCallback) => {
-            return existingCallback !== callback
+    private onConnectionFailed = (errorReason: any) => {
+        this._subscribedToConnection.forEach((callback) => {
+            callback({ message: String(errorReason), type: 'error' })
         })
     }
 }
